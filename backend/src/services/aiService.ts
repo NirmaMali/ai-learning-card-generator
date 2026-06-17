@@ -1,4 +1,5 @@
 import '../loadEnv';
+import OpenAI from 'openai';
 import { LearningCard } from '../websocket/messageTypes';
 import { logger } from '../utils/logger';
 
@@ -10,44 +11,65 @@ export class AIServiceError extends Error {
   }
 }
 
-type GeminiGenerateContentResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{
-        text?: string;
-      }>;
-    };
-  }>;
-  error?: {
-    message?: string;
-  };
-};
+type OpenRouterClient = OpenAI;
 
-function getGeminiApiKey(): string {
-  const apiKey = process.env.GEMINI_API_KEY;
+let openRouterClient: OpenRouterClient | null = null;
+
+function getOpenRouterClient(): OpenRouterClient {
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new AIServiceError(
-      'GEMINI_API_KEY is not set. Add it to backend/.env and restart the server.'
+      'OPENROUTER_API_KEY is not set. Add it to backend/.env and restart the server.'
     );
   }
-  return apiKey;
+  if (!openRouterClient) {
+    openRouterClient = new OpenAI({
+      apiKey,
+      baseURL: 'https://openrouter.ai/api/v1',
+      defaultHeaders: {
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'AI Learning Card Generator',
+      },
+    });
+  }
+  return openRouterClient;
 }
 
 /**
- * Generates a single learning card for the given topic using Gemini.
+ * Generates a single learning card for the given topic using OpenRouter.
  *
  * Design note: This function is the ONLY place where the LLM provider is called.
- * Swapping to Gemini or another provider requires changing only this file —
+ * Swapping to OpenRouter or another provider requires changing only this file —
  * the rest of the application depends only on the LearningCard return type.
+ *
+ * @param topic - The topic to generate a card about
+ * @param cardIndex - The card number (1, 2, or 3)
+ * @param previousCards - Array of previously generated cards to ensure content diversity
  */
 export async function generateLearningCard(
   topic: string,
-  cardIndex: number
+  cardIndex: number,
+  previousCards: LearningCard[] = []
 ): Promise<LearningCard> {
+  // Build context about previously generated cards
+  let previousContext = '';
+  if (previousCards.length > 0) {
+    previousContext =
+      '\n\nPreviously generated cards for this topic:\n' +
+      previousCards
+        .map(
+          (card, idx) =>
+            `Card ${idx + 1}:\n  Title: ${card.title}\n  Key Concept: ${card.keyConcept}\n  Fun Fact: ${card.funFact}`
+        )
+        .join('\n\n');
+    previousContext +=
+      '\n\nIMPORTANT: Generate a card that covers a COMPLETELY DIFFERENT aspect and perspective. Do NOT repeat or overlap with the titles, concepts, or facts above.';
+  }
+
   // Use a well-structured prompt that instructs the model to return strict JSON
   const prompt = `You are an educational content creator. Generate a learning card about the topic: "${topic}".
 
-This is card ${cardIndex} of 3, so make it cover a DIFFERENT aspect of the topic than the other cards would.
+This is card ${cardIndex} of 3, so make it cover a DIFFERENT aspect of the topic than the other cards would.${previousContext}
 
 Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 {
@@ -57,46 +79,25 @@ Respond with ONLY valid JSON in this exact format (no markdown, no code fences):
 }`;
 
   try {
-    const apiKey = getGeminiApiKey();
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+    const response = await getOpenRouterClient().chat.completions.create({
+      model: 'openai/gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a helpful educational assistant that generates learning cards. Always respond with valid JSON only.',
         },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              {
-                text: 'You are a helpful educational assistant that generates learning cards. Always respond with valid JSON only.',
-              },
-            ],
-          },
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 300,
-            responseMimeType: 'application/json',
-          },
-        }),
-      }
-    );
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 300,
+      response_format: { type: 'json_object' },
+    });
 
-    const payload = (await response.json()) as GeminiGenerateContentResponse;
-    if (!response.ok) {
-      const providerMessage = payload.error?.message || response.statusText;
-      throw new AIServiceError(
-        `Gemini request failed (${response.status}): ${providerMessage}`
-      );
-    }
-
-    const content = payload.candidates?.[0]?.content?.parts?.[0]?.text;
+    const content = response.choices[0]?.message?.content;
     if (!content) {
       throw new AIServiceError('Empty response from AI provider');
     }

@@ -1,6 +1,6 @@
 # AI Learning Card Generator
 
-A full-stack web application that generates educational learning cards from any topic using Gemini, streaming results to the browser **one card at a time over a persistent WebSocket connection**. Instead of a single REST request that blocks until all three cards are ready, the backend generates cards sequentially and pushes each `CARD_READY` event as soon as it completes — giving users immediate, progressive feedback. This makes real-time loading states, per-card errors, and targeted retries natural to implement and easy to observe in a demo.
+A full-stack web application that generates educational learning cards from any topic using OpenRouter, streaming results to the browser **one card at a time over a persistent WebSocket connection**. Instead of a single REST request that blocks until all three cards are ready, the backend generates cards sequentially and pushes each `CARD_READY` event as soon as it completes — giving users immediate, progressive feedback. This makes real-time loading states, per-card errors, and targeted retries natural to implement and easy to observe in a demo.
 
 ---
 
@@ -9,7 +9,7 @@ A full-stack web application that generates educational learning cards from any 
 ### Prerequisites
 
 - **Node.js** 18+ and **npm**
-- A **Gemini API key** ([aistudio.google.com](https://aistudio.google.com))
+- An **OpenRouter API key** ([openrouter.ai](https://openrouter.ai))
 
 ### 1. Clone and install
 
@@ -41,7 +41,7 @@ cp .env.example .env
 Edit `backend/.env`:
 
 ```env
-GEMINI_API_KEY=your-gemini-key-here
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
 PORT=4000
 ```
 
@@ -58,7 +58,7 @@ Edit `frontend/.env` (defaults work for local dev):
 VITE_WS_URL=ws://localhost:4000
 ```
 
-> **Security:** The Gemini API key is read only on the backend. It is never bundled into the frontend.
+> **Security:** The OpenRouter API key is read only on the backend. It is never bundled into the frontend.
 
 ---
 
@@ -136,7 +136,7 @@ The app uses **one persistent WebSocket per browser tab**, opened when the app l
 ### Sequence diagram (Success Mode)
 
 ```
-Browser                          Server                         Gemini
+Browser                          Server                         OpenRouter
   |                                |                               |
   |--- GENERATE_REQUEST ---------->|                               |
   |<-- GENERATION_STARTED ---------|                               |
@@ -170,7 +170,7 @@ Cards are generated **sequentially** on the server — card 2's LLM call does no
 
 ### How Failure Mode works
 
-Set the **Failure Mode** toggle before clicking Generate. The server still generates cards 1 and 2 normally via Gemini. When it reaches card 3, it **deliberately throws a controlled error** in `cardGenerator.ts` — this is intentional and deterministic, not a flaky network or API failure:
+Set the **Failure Mode** toggle before clicking Generate. The server still generates cards 1 and 2 normally via OpenRouter. When it reaches card 3, it **deliberately throws a controlled error** in `cardGenerator.ts` — this is intentional and deterministic, not a flaky network or API failure:
 
 ```typescript
 if (mode === 'failure' && i === 3) {
@@ -184,7 +184,7 @@ The server emits `CARD_ERROR` for card 3 only. Cards 1 and 2 remain visible and 
 
 1. User clicks **Retry** on the failed card 3.
 2. Client sends `RETRY_CARD` over the **same WebSocket** (no reconnect).
-3. Server emits `CARD_LOADING` for card 3, calls Gemini, and **always forces success on retry** regardless of the original mode.
+3. Server emits `CARD_LOADING` for card 3, calls OpenRouter, and **always forces success on retry** regardless of the original mode.
 4. Server emits `CARD_READY` then `GENERATION_COMPLETE`.
 5. UI shows the success banner: "✅ All 3 cards generated successfully!"
 
@@ -229,7 +229,7 @@ ai-learning-card-generator/
 │       │   ├── socketServer.ts  # WS lifecycle, heartbeat, message routing
 │       │   └── messageTypes.ts  # Shared TS interfaces for the WS protocol
 │       ├── services/
-│       │   ├── aiService.ts     # Gemini abstraction (swap provider here only)
+│       │   ├── aiService.ts     # OpenRouter abstraction (swap provider here only)
 │       │   └── cardGenerator.ts # Sequential 3-card generation + failure simulation
 │       └── utils/
 │           └── logger.ts        # Coloured console logger
@@ -263,7 +263,7 @@ ai-learning-card-generator/
 - **Reconnection with exponential backoff** — auto-reconnect dropped WebSockets and resume or gracefully fail in-flight generations.
 - **Automated WS protocol tests** — integration tests that assert the exact message sequence for success, failure, and retry flows.
 - **Card history persistence** — save generated cards to localStorage or a database so users can revisit past topics.
-- **Provider fallback** — implement an alternate provider adapter behind the same `generateLearningCard` interface with automatic fallback if Gemini is unavailable.
+- **Provider fallback** — implement an alternate provider adapter behind the same `generateLearningCard` interface with automatic fallback if OpenRouter is unavailable.
 
 ---
 

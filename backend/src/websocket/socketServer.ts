@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
-import { ClientMessage } from './messageTypes';
+import { ClientMessage, LearningCard } from './messageTypes';
 import { generateCards, retryCard } from '../services/cardGenerator';
 import { logger } from '../utils/logger';
 
@@ -8,6 +8,9 @@ import { logger } from '../utils/logger';
 // This prevents concurrent generate requests from the same client, which could
 // cause interleaved card messages and corrupt the UI state.
 const activeGenerations = new WeakMap<WebSocket, boolean>();
+
+// Track generated cards per connection for retry context (ensures diversity)
+const generatedCardsPerConnection = new WeakMap<WebSocket, LearningCard[]>();
 
 // Simple per-connection rate limit: reject rapid repeated Generate clicks.
 const RATE_LIMIT_MS = 2_000;
@@ -188,7 +191,9 @@ async function handleGenerateRequest(
   );
 
   try {
-    await generateCards(ws, trimmedTopic, mode);
+    const cards = await generateCards(ws, trimmedTopic, mode);
+    // Store generated cards for retry requests
+    generatedCardsPerConnection.set(ws, cards);
   } catch (error) {
     logger.error(`Unexpected error in generateCards: ${error}`);
     ws.send(
@@ -236,7 +241,8 @@ async function handleRetryCard(
   activeGenerations.set(ws, true);
 
   try {
-    await retryCard(ws, topic, cardIndex);
+    const previousCards = generatedCardsPerConnection.get(ws) ?? [];
+    await retryCard(ws, topic, cardIndex, previousCards);
   } catch (error) {
     logger.error(`Unexpected error in retryCard: ${error}`);
     ws.send(

@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import { generateLearningCard } from './aiService';
-import { ServerMessage } from '../websocket/messageTypes';
+import { ServerMessage, LearningCard } from '../websocket/messageTypes';
 import { logger } from '../utils/logger';
 
 // Helper to send typed messages over WebSocket
@@ -19,13 +19,16 @@ function sendMessage(ws: WebSocket, message: ServerMessage): void {
  *
  * In 'failure' mode, card 3 intentionally fails to demonstrate error handling
  * and the retry flow. This is a DELIBERATE test scenario, not a bug.
+ *
+ * @returns Array of successfully generated cards (for retry context)
  */
 export async function generateCards(
   ws: WebSocket,
   topic: string,
   mode: 'success' | 'failure'
-): Promise<void> {
+): Promise<LearningCard[]> {
   const totalCards = 3;
+  const generatedCards: LearningCard[] = [];
 
   // Signal the start of generation
   sendMessage(ws, {
@@ -49,8 +52,12 @@ export async function generateCards(
         );
       }
 
-      // Generate the card via the AI service (real LLM call)
-      const card = await generateLearningCard(topic, i);
+      // Generate the card via the AI service (real LLM call), passing previously generated cards
+      // so the model can ensure content diversity across all three cards
+      const card = await generateLearningCard(topic, i, generatedCards);
+
+      // Track this card so subsequent cards can avoid duplicating its content
+      generatedCards.push(card);
 
       sendMessage(ws, {
         type: 'CARD_READY',
@@ -75,13 +82,16 @@ export async function generateCards(
 
       // On error, stop generating further cards — the client can retry
       // the failed card specifically via RETRY_CARD
-      return;
+      return generatedCards;
     }
   }
 
   // All cards generated successfully
   sendMessage(ws, { type: 'GENERATION_COMPLETE' });
   logger.info(`All ${totalCards} cards generated for topic "${topic}"`);
+
+  // Return all generated cards
+  return generatedCards;
 }
 
 /**
@@ -94,7 +104,8 @@ export async function generateCards(
 export async function retryCard(
   ws: WebSocket,
   topic: string,
-  cardIndex: number
+  cardIndex: number,
+  generatedCards: LearningCard[] = []
 ): Promise<void> {
   logger.info(`Retrying card ${cardIndex} for topic "${topic}"`);
 
@@ -103,7 +114,8 @@ export async function retryCard(
 
   try {
     // Force success on retry — this is intentional so the demo always completes
-    const card = await generateLearningCard(topic, cardIndex);
+    // Pass previously generated cards so the retry card also maintains content diversity
+    const card = await generateLearningCard(topic, cardIndex, generatedCards);
 
     sendMessage(ws, {
       type: 'CARD_READY',

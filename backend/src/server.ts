@@ -27,10 +27,10 @@ const server = http.createServer(app);
 const wss = createWebSocketServer(server);
 
 server.listen(PORT, () => {
-  const keyLoaded = Boolean(process.env.GEMINI_API_KEY);
+  const keyLoaded = Boolean(process.env.OPENROUTER_API_KEY);
   logger.info(`Server running on http://localhost:${PORT}`);
   logger.info(`WebSocket server ready on ws://localhost:${PORT}`);
-  logger.info(keyLoaded ? 'Gemini API key loaded.' : 'WARNING: GEMINI_API_KEY is missing - check backend/.env');
+  logger.info(keyLoaded ? 'OpenRouter API key loaded.' : 'WARNING: OPENROUTER_API_KEY is missing - check backend/.env');
   logger.info('Waiting for connections...');
 });
 
