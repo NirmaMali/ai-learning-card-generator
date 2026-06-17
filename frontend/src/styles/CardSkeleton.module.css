@@ -1,0 +1,43 @@
+.skeleton {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  min-height: 200px;
+}
+
+.line {
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    var(--bg) 50%,
+    var(--border) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.lineShort { composes: line; width: 30%; margin-bottom: 0.75rem; }
+.lineTitle { composes: line; width: 70%; height: 14px; margin-bottom: 1rem; }
+.lineFull { composes: line; width: 100%; margin-bottom: 0.5rem; }
+.lineMedium { composes: line; width: 80%; margin-bottom: 0.5rem; }
+.lineEnd { composes: line; width: 55%; margin-bottom: 1rem; }
+
+.thinkingDots {
+  display: flex;
+  gap: 4px;
+  margin-top: 1rem;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.dot:nth-child(2) { animation-delay: 0.15s; }
+.dot:nth-child(3) { animation-delay: 0.3s; }
